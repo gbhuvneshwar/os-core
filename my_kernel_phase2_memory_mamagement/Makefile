@@ -1,0 +1,55 @@
+CC      = aarch64-linux-gnu-gcc
+LD      = aarch64-linux-gnu-ld
+OBJCOPY = aarch64-linux-gnu-objcopy
+
+CFLAGS  = -ffreestanding \
+          -nostdlib \
+          -nostdinc \
+          -fno-builtin \
+          -mcpu=cortex-a72 \
+          -O1 \
+          -Wall \
+          -Wextra \
+          -g
+
+SRCS    = boot.S uart.c memory.c kernel.c
+
+all: kernel8.img
+
+boot.o: boot.S
+	$(CC) $(CFLAGS) -c boot.S -o boot.o
+
+uart.o: uart.c uart.h
+	$(CC) $(CFLAGS) -c uart.c -o uart.o
+
+memory.o: memory.c memory.h uart.h
+	$(CC) $(CFLAGS) -c memory.c -o memory.o
+
+kernel.o: kernel.c uart.h memory.h
+	$(CC) $(CFLAGS) -c kernel.c -o kernel.o
+
+kernel.elf: boot.o uart.o memory.o kernel.o
+	$(LD) -T kernel.ld \
+	      boot.o uart.o memory.o kernel.o \
+	      -o kernel.elf
+
+kernel8.img: kernel.elf
+	$(OBJCOPY) -O binary \
+	           kernel.elf kernel8.img
+	@echo ""
+	@echo "=== BUILD SUCCESS ==="
+	@aarch64-linux-gnu-objdump -f kernel.elf \
+	  | grep "start address"
+	@ls -la kernel8.img
+	@echo "====================="
+
+run: kernel8.img
+	qemu-system-aarch64 \
+	  -M virt \
+	  -cpu cortex-a72 \
+	  -kernel kernel8.img \
+	  -nographic \
+	  -m 128M
+
+clean:
+	rm -f *.o *.elf *.img

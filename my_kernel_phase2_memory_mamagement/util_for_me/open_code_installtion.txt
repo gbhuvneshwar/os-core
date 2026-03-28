@@ -1,0 +1,12 @@
+apt update && apt install -y \
+  nodejs \
+  npm \
+  curl
+
+#on YOUR MAC terminal:
+cd ~/mykernel
+
+# rebuild image with opencode!
+docker build -t mykernel-dev .
+
+
