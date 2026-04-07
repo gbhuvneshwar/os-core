@@ -118,15 +118,23 @@ i32 create_user_task(
     /* Let's encode these as ARM64 instructions */
     /* For simplicity, just fill with svc #0 instructions that will trigger syscall handler */
     
-    /* Fill user code page with simple infinite loop
-     * This will let us verify that ERET successfully returns to EL0
-     * without triggering infinite exceptions
+    /* Fill user code page with executable user code
+     * First instruction: SVC #0 - syscall to kernel
+     * Remaining instructions: infinite loop (b . - branch to self)
+     * 
+     * This demonstrates:
+     * 1. User code runs at EL0
+     * 2. Executes SVC instruction
+     * 3. Exception handler catches it and prints [SYSCALL]
+     * 4. PC advances past SVC
+     * 5. Infinite loop runs (visible as no more output)
      */
-    for (int i = 0; i < 1024; i++) {
+    code_ptr[0] = 0xD4000001;      /* svc #0 - syscall instruction */
+    for (int i = 1; i < 1024; i++) {
         code_ptr[i] = 0x14000000;  /* b . - branch to self (infinite loop) */
     }
     
-    /* PC points to user memory where our bootstrap code is */
+    /* PC points to user memory where our code is */
     task->pc = task->code_base;
     
     /* Allocate stack (user stack must be separate from kernel stack) */
@@ -283,13 +291,13 @@ asm(
     ".global switch_to_user_mode_asm\n"
     ".section .text.usermode_switch\n"
     "switch_to_user_mode_asm:\n"
-    "    ldr x1, [x0, #32]\n"
-    "    ldr x2, [x0, #40]\n"
-    "    msr elr_el1, x1\n"
-    "    mov x3, #0\n"
-    "    msr spsr_el1, x3\n"
-    "    mov sp, x2\n"
-    "    eret\n"
+    "    ldr x1, [x0, #48]\n"     /* Load PC from offset 48 (pc field) */
+    "    ldr x2, [x0, #56]\n"     /* Load SP from offset 56 (sp field) */
+    "    msr elr_el1, x1\n"       /* Set exception return address to user PC */
+    "    mov x3, #0\n"            /* Set privilege level to 0 (EL0) */
+    "    msr spsr_el1, x3\n"      /* Store in saved processor state */
+    "    mov sp, x2\n"            /* Load user stack pointer */
+    "    eret\n"                  /* PRIVILEGE CHANGE: EL1 → EL0 */
 );
 
 /*
